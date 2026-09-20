@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { Project } from "ts-morph";
 
 /**
  * Finds the main type file (`.d.ts`) of an unpacked package.
@@ -25,4 +26,23 @@ export async function locateTypes(dir: string): Promise<string | undefined> {
     if (existsSync(file)) return file;
   }
   return undefined;
+}
+
+/**
+ * True when the types import from packages that are not on disk. Those imports come out
+ * as `any`, which hides most of the API, so the dependencies are worth downloading.
+ */
+export function hasUnresolvedImports(typesFile: string): boolean {
+  const project = new Project({
+    skipAddingFilesFromTsConfig: true,
+    compilerOptions: { skipLibCheck: true, noEmit: true },
+  });
+  const source = project.addSourceFileAtPath(typesFile);
+  project.resolveSourceFileDependencies();
+
+  return [...source.getImportDeclarations(), ...source.getExportDeclarations()].some((declaration) => {
+    const specifier = declaration.getModuleSpecifierValue();
+    // Relative imports live inside the package and are already unpacked.
+    return !!specifier && !specifier.startsWith(".") && !declaration.getModuleSpecifierSourceFile();
+  });
 }

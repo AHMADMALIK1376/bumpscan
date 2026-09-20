@@ -3,7 +3,19 @@
 **See exactly which lines of your code an npm upgrade will break — before you upgrade.**
 
 ```bash
-npx bumpscan axios@2
+npx bumpscan            # check every dependency
+npx bumpscan axios@2    # check one upgrade in detail
+```
+
+```
+🧨 32 dependencies · 520 files scanned
+
+  tinybench     2.9.0 → 6.2.0    ❌ 2 breaking  ⚠️ 3 risky
+  execa         9.6.1 → 10.0.1   ❌ 1 breaking
+  chalk         5.6.2 → 6.0.0    ❌ 1 breaking
+  @biomejs/biome 1.9.4 → 2.5.14  ✅ safe for your code
+
+  21 already up to date
 ```
 
 ```
@@ -83,7 +95,7 @@ No AI, no server, no account. Everything runs on your machine.
 - [x] Find affected lines in your code, through imports, `require`, chains and local variables
 - [x] Read types from `@types/*` for packages that don't ship their own
 - [x] Suggest the fix for each break
-- [ ] Scan every dependency at once
+- [x] Scan every dependency at once
 - [ ] Colored report with fixes
 - [ ] GitHub Action that comments on Dependabot / Renovate PRs
 

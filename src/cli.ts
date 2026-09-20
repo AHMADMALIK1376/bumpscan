@@ -3,7 +3,14 @@ import path from "node:path";
 import { Command } from "commander";
 import ora from "ora";
 import pc from "picocolors";
-import { compareUpgrade, prepareUpgrade, scanProject, type Hit } from "./index.js";
+import {
+  compareUpgrade,
+  listDependencies,
+  prepareUpgrade,
+  scanAllDependencies,
+  scanProject,
+  type Hit,
+} from "./index.js";
 
 /** How many hits of each group to show before folding the rest (unless --all). */
 const BREAKING_LIMIT = 25;
@@ -32,16 +39,94 @@ function printHit(hit: Hit, cwd: string, icon: string, color: (s: string) => str
   }
 }
 
+interface CliOptions {
+  cwd: string;
+  all?: boolean;
+  json?: boolean;
+  ci?: boolean;
+  dev?: boolean;
+}
+
+/** `bumpscan` with no package: check every dependency against its latest version. */
+async function scanEverything(options: CliOptions) {
+  const spinner = options.json ? undefined : ora("Reading package.json…").start();
+  try {
+    const dependencies = await listDependencies(options.cwd);
+    const wanted = dependencies.filter((d) => options.dev !== false || !d.dev);
+    if (!wanted.length) {
+      spinner?.stop();
+      console.log(pc.yellow("No dependencies to check.\n"));
+      return;
+    }
+
+    let done = 0;
+    const scan = await scanAllDependencies(options.cwd, {
+      includeDev: options.dev !== false,
+      onDone: () => {
+        if (spinner) spinner.text = `Checking ${wanted.length} dependencies… (${++done}/${wanted.length})`;
+      },
+    });
+    spinner?.stop();
+
+    if (options.json) {
+      console.log(JSON.stringify(scan, null, 2));
+      return;
+    }
+
+    // Worst first, so the most urgent upgrade is at the top.
+    const upgradable = scan.results
+      .filter((r) => r.from !== r.to)
+      .sort((a, b) => b.breaking - a.breaking || b.risky - a.risky);
+    const width = Math.max(...scan.results.map((r) => r.name.length));
+    console.log(pc.bold(`\n🧨 ${scan.results.length} dependencies · ${scan.filesScanned} files scanned\n`));
+
+    for (const item of upgradable) {
+      const name = item.name.padEnd(width);
+      const versions = pc.dim(`${item.from} → ${item.to}`.padEnd(24));
+      if (item.error) {
+        console.log(`  ${name}  ${pc.dim("could not check")}  ${pc.dim(short(item.error, 50))}`);
+      } else if (item.breaking) {
+        console.log(`  ${name}  ${versions}  ${pc.red(`❌ ${item.breaking} breaking`)}${item.risky ? pc.yellow(`  ⚠️ ${item.risky} risky`) : ""}`);
+      } else if (item.risky) {
+        console.log(`  ${name}  ${versions}  ${pc.yellow(`⚠️ ${item.risky} risky`)}`);
+      } else {
+        console.log(`  ${name}  ${versions}  ${pc.green("✅ safe for your code")}`);
+      }
+    }
+
+    const upToDate = scan.results.length - upgradable.length;
+    if (upToDate) console.log(pc.dim(`\n  ${upToDate} already up to date`));
+
+    const breaking = upgradable.filter((r) => r.breaking);
+    console.log(
+      breaking.length
+        ? pc.dim(`\nRun ${pc.bold(`bumpscan ${breaking[0]!.name}@${breaking[0]!.to}`)} to see the lines that break.\n`)
+        : pc.green("\n✅ No breaking changes in the code you actually use.\n"),
+    );
+
+    if (options.ci && breaking.length) process.exitCode = 1;
+  } catch (error) {
+    spinner?.fail();
+    console.error(pc.red(error instanceof Error ? error.message : String(error)));
+    process.exitCode = 1;
+  }
+}
+
 program
   .name("bumpscan")
   .description("See which lines of your code an npm package upgrade will break, before you upgrade.")
   .version("0.0.1")
-  .argument("<package>", "package and the version to upgrade to, e.g. axios@2")
+  .argument("[package]", "package and version to upgrade to, e.g. axios@2. Leave empty to check every dependency")
   .option("-C, --cwd <dir>", "project folder to scan", process.cwd())
   .option("--all", "list every change, including ones your code never touches")
   .option("--json", "print the result as JSON")
   .option("--ci", "exit with code 1 when your code hits a breaking change")
-  .action(async (input: string, options: { cwd: string; all?: boolean; json?: boolean; ci?: boolean }) => {
+  .option("--no-dev", "skip devDependencies when checking the whole project")
+  .action(async (input: string | undefined, options: CliOptions) => {
+    if (!input) {
+      await scanEverything(options);
+      return;
+    }
     const spinner = options.json ? undefined : ora("Downloading both versions…").start();
     try {
       const plan = await prepareUpgrade(input, options.cwd);
