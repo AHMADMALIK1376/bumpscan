@@ -14,22 +14,28 @@ npx bumpscan axios@2
 ✅ 21 other uses are safe
 ```
 
-> ⚠️ Early work in progress. Today bumpscan lists everything that changed between the
-> two versions. Showing only the lines *your* code uses is being built now.
+> ⚠️ Early work in progress, but the main idea works today.
 
-Real output today:
+Real output, scanning a small project against the real axios upgrade:
 
 ```
-🧨 chalk  4.1.2 → 5.6.2
+🧨 axios  0.27.2 → 1.20.0
 
-Breaking (6)
-  ❌ (package)  is now ESM-only: require() stops working
-  ❌ (package)  now needs Node 12.17.0 or newer (was 10.0.0)
-  ❌ Chalk  was an interface, is now a variable
-  ❌ ChalkFunction  interface was removed
-  ❌ Instance  type was removed
-  ❌ Level  renamed to ColorSupportLevel
+Breaks your code (1)
+  ❌ CanceledError.constructor  no longer accepts 4 arguments
+       src/api.ts:10:13  throw new CanceledError(reason, "ERR_CANCELED", {} as Axi…
+
+Might break your code (5)
+  ⚠️  AxiosRequestConfig.timeout  type changed
+       before: number
+       after:  Milliseconds
+       src/api.ts:3:67  const client = axios.create({ baseURL: "…", timeout: 5000 })
+       src/api.ts:6:39  return client.get(`/users/${id}`, { timeout: 2000 });
+
+1 breaking, 5 risky in 1 of your files · 172 other changes don't touch your code
 ```
+
+The last line is the point: **172 changes, 6 that matter to you.**
 
 ## What it checks
 
@@ -58,8 +64,9 @@ No AI, no server, no account. Everything runs on your machine.
 - [x] Find the current version and download both versions
 - [x] Compare the public API of the two versions
 - [x] Compare package.json (ESM-only, Node version)
-- [ ] Find affected lines in your code
+- [x] Find affected lines in your code, through imports, `require`, chains and local variables
 - [ ] Read types from `@types/*` for packages that don't ship their own
+- [ ] Suggest the fix for each break
 - [ ] Colored report with fixes
 - [ ] GitHub Action that comments on Dependabot / Renovate PRs
 
@@ -69,8 +76,9 @@ No AI, no server, no account. Everything runs on your machine.
 npm install
 npm run build
 node dist/cli.js axios@latest --cwd path/to/a/project
-node dist/cli.js axios@latest --all     # list every change
+node dist/cli.js axios@latest --all     # don't fold long lists
 node dist/cli.js axios@latest --json    # machine-readable output
+node dist/cli.js axios@latest --ci      # exit code 1 when your code breaks
 npm test
 ```
 
