@@ -8,6 +8,10 @@
 
 No AI, no server, no account. One command.
 
+<img src="https://raw.githubusercontent.com/AHMADMALIK1376/bumpscan/main/docs/demo.svg" alt="bumpscan finding two removed express methods in a project, with file names and line numbers" width="760">
+
+<sub>Real output. `npm outdated` tells you a new version exists; bumpscan tells you what it does to *your* code.</sub>
+
 ```bash
 npx bumpscan            # check every dependency
 npx bumpscan axios@2    # check one upgrade in detail
