@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Project } from "ts-morph";
@@ -22,10 +22,22 @@ export async function locateTypes(dir: string): Promise<string | undefined> {
 
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;
-    const file = path.join(dir, candidate);
-    if (existsSync(file)) return file;
+    const target = path.join(dir, candidate);
+
+    // A package may point at a file, a file without its extension, or a folder.
+    for (const file of [target, `${target}.d.ts`, path.join(target, "index.d.ts")]) {
+      if (isFile(file)) return file;
+    }
   }
   return undefined;
+}
+
+function isFile(candidate: string): boolean {
+  try {
+    return statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -10,6 +10,8 @@ export interface Usage {
   column: number;
   /** The line of code, trimmed. */
   code: string;
+  /** Character range of just the name, so `--fix` can rename it. Absent when renaming is unsafe. */
+  nameRange?: [start: number, end: number];
 }
 
 const SOURCE_GLOBS = [
@@ -158,6 +160,20 @@ function importBindings(file: SourceFile, packageName: string): Binding[] {
   return bindings;
 }
 
+/**
+ * The name part of a usage, which is what a rename replaces. A shorthand property
+ * (`{ timeout }`) is left out: renaming it would change the variable too.
+ */
+function nameRangeOf(node: Node): [number, number] | undefined {
+  const named =
+    Node.isPropertyAccessExpression(node) || Node.isPropertyAssignment(node) || Node.isImportSpecifier(node)
+      ? node.getNameNode()
+      : Node.isIdentifier(node)
+        ? node
+        : undefined;
+  return named ? [named.getStart(), named.getEnd()] : undefined;
+}
+
 function usageAt(node: Node, path: string): Usage {
   const file = node.getSourceFile();
   const { line, column } = file.getLineAndColumnAtPos(node.getStart());
@@ -167,6 +183,7 @@ function usageAt(node: Node, path: string): Usage {
     line,
     column,
     code: file.getFullText().split(/\r?\n/)[line - 1]?.trim() ?? "",
+    nameRange: nameRangeOf(node),
   };
 }
 

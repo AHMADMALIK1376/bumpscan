@@ -13,6 +13,8 @@ export interface ApiChange {
   after?: string;
   /** What to do about it, when we can work it out. */
   fix?: string;
+  /** The new name, when this is a plain rename. `--fix` uses it. */
+  renamedTo?: string;
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { breaking: 0, maybe: 1, safe: 2 };
@@ -226,6 +228,7 @@ export function compareApi(before: ApiSnapshot, after: ApiSnapshot): ApiChange[]
             severity: "breaking",
             message: `renamed to ${target.name}`,
             fix: `rename ${entry.name} to ${target.name}`,
+            renamedTo: target.name,
           }
         : {
             path: entry.path,

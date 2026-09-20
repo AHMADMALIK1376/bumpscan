@@ -14,8 +14,8 @@ describe("listDependencies", () => {
   it("lists dependencies and devDependencies", async () => {
     const dir = await project('{"dependencies":{"axios":"^1.0.0"},"devDependencies":{"vitest":"^5.0.0"}}');
     expect(await listDependencies(dir)).toEqual([
-      { name: "axios", range: "^1.0.0", dev: false },
-      { name: "vitest", range: "^5.0.0", dev: true },
+      { name: "axios", range: "^1.0.0", dev: false, folder: dir },
+      { name: "vitest", range: "^5.0.0", dev: true, folder: dir },
     ]);
   });
 

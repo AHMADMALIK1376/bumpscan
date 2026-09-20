@@ -48,6 +48,8 @@ function typeText(node: TypeNode | Node | undefined): string {
   if (!node) return "any";
   return node
     .getText()
+    // `import("./types.js").Got` and `import("./types").Got` are the same type to a user.
+    .replace(/import\("[^"]*"\)\./g, "")
     .replace(/\s+/g, " ")
     .replace(/\s*[;,]\s*}/g, " }")
     .replace(/;\s*/g, ", ")

@@ -4,6 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import ora from "ora";
 import pc from "picocolors";
+import { applyFixes } from "./core/apply-fixes.js";
 import { markdownReport, titleToTarget } from "./core/markdown.js";
 import {
   compareUpgrade,
@@ -55,6 +56,7 @@ interface CliOptions {
   ci?: boolean;
   dev?: boolean;
   markdown?: boolean;
+  fix?: boolean;
   githubOutput?: boolean;
   prTitle?: string;
 }
@@ -78,6 +80,31 @@ async function writeGithubOutput(result: ScanResult, cwd: string) {
     return `${key}<<${delimiter}\n${value}\n${delimiter}`;
   });
   await appendFile(file, `${lines.join("\n")}\n`);
+}
+
+/** Rewrites the renames, then says plainly what still needs a human. */
+async function runFixes(hits: Hit[], cwd: string) {
+  const { edits, skipped } = await applyFixes(hits);
+
+  if (edits.length) {
+    console.log(pc.bold(pc.green(`Fixed (${edits.length})`)));
+    for (const edit of edits) {
+      const file = path.relative(cwd, edit.file).replaceAll("\\", "/");
+      console.log(`  ✏️  ${pc.cyan(`${file}:${edit.line}`)}  ${edit.from} → ${pc.green(edit.to)}`);
+    }
+    console.log(pc.dim("\n  Check the changes with `git diff` before committing.\n"));
+  } else {
+    console.log(pc.dim("Nothing could be fixed automatically.\n"));
+  }
+
+  if (skipped.length) {
+    console.log(pc.yellow(`${skipped.length} breaking change${skipped.length === 1 ? "" : "s"} still need you:`));
+    for (const hit of skipped.slice(0, 10)) {
+      const what = hit.change.path === "(package)" ? "your whole project" : hit.change.path;
+      console.log(`  ${pc.yellow("•")} ${what}  ${pc.dim(hit.change.message)}`);
+    }
+    console.log();
+  }
 }
 
 /** `bumpscan` with no package: check every dependency against its latest version. */
@@ -158,6 +185,7 @@ program
   .option("--markdown", "print the report as markdown, for a pull request comment")
   .option("--github-output", "write breaking/risky/markdown to $GITHUB_OUTPUT")
   .option("--pr-title <title>", "take the package from a pull request title when none is given")
+  .option("--fix", "rewrite the renames in your code (edits files in place)")
   .action(async (input: string | undefined, options: CliOptions) => {
     // Bots title their pull requests "bump axios from 1.2.3 to 2.0.0".
     input ||= options.prTitle ? titleToTarget(options.prTitle) : undefined;
@@ -214,6 +242,12 @@ program
         if (shown.length < list.length) console.log(pc.dim(`  …and ${list.length - shown.length} more (use --all)`));
         console.log();
       };
+      if (breaking.length > BREAKING_LIMIT) {
+        console.log(
+          pc.yellow(`This upgrade is closer to a rewrite: ${breaking.length} things you use changed.`),
+          pc.dim("Reading the changelog first will be faster than fixing them one by one.\n"),
+        );
+      }
       group("Breaks your code", breaking, BREAKING_LIMIT, "❌", pc.red);
       group("Might break your code", maybe, MAYBE_LIMIT, "⚠️ ", pc.yellow);
 
@@ -236,6 +270,7 @@ program
         );
       }
 
+      if (options.fix) await runFixes(result.hits, options.cwd);
       if (options.ci && breaking.length) process.exitCode = 1;
     } catch (error) {
       spinner?.fail();

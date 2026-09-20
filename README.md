@@ -87,6 +87,32 @@ Breaks your code (3)
 
 No AI, no server, no account. Everything runs on your machine.
 
+## Fixing the easy ones
+
+`--fix` rewrites the renames, which are the only changes that are always safe to
+rewrite. Everything else is listed for you to decide:
+
+```
+$ npx bumpscan chalk@5 --fix
+
+Fixed (2)
+  ✏️  src/ui.ts:1  Level → ColorSupportLevel
+  ✏️  src/ui.ts:3  Level → ColorSupportLevel
+
+2 breaking changes still need you:
+  • your whole project  is now ESM-only: require() stops working
+  • your whole project  now needs Node 12.17.0 or newer
+```
+
+It never edits a line whose text has changed since the scan, so a stale run cannot
+corrupt a file. Check the result with `git diff` before committing.
+
+## Monorepos
+
+Run it at the root. Dependencies are collected from every workspace package
+(npm, yarn or pnpm), listed once, and matched against code anywhere in the repo.
+`workspace:*` links are skipped, since they are not on npm.
+
 ## GitHub Action
 
 Comment on every Dependabot or Renovate pull request with the lines of your code
@@ -124,8 +150,10 @@ posts one comment and updates that same comment on later pushes.
 - [x] Scan every dependency at once
 - [ ] Colored report with fixes
 - [x] GitHub Action that comments on Dependabot / Renovate PRs
-- [ ] Monorepo support
-- [ ] `--fix` that edits your code for you
+- [x] Monorepo support (npm, yarn and pnpm workspaces)
+- [x] `--fix` that renames things in your code for you
+- [ ] VS Code extension
+- [ ] Website
 
 ## Develop
 
@@ -136,6 +164,7 @@ node dist/cli.js axios@latest --cwd path/to/a/project
 node dist/cli.js axios@latest --all     # don't fold long lists
 node dist/cli.js axios@latest --json    # machine-readable output
 node dist/cli.js axios@latest --ci      # exit code 1 when your code breaks
+node dist/cli.js chalk@5 --fix          # rewrite the renames in your code
 npm test
 ```
 

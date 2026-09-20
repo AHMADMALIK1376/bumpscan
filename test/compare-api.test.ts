@@ -97,6 +97,14 @@ describe("compareApi", () => {
     expect(find(changes, "Id")).toMatchObject({ severity: "maybe", before: "string", after: "string | number" });
   });
 
+  it("ignores an internal import path changing", () => {
+    const changes = diff(
+      `export declare const client: import("./types").Client;`,
+      `export declare const client: import("./types.js").Client;`,
+    );
+    expect(changes).toEqual([]);
+  });
+
   it("ignores formatting and parameter renames", () => {
     const changes = diff(
       `export declare function get(url: string): { a: string; };`,
