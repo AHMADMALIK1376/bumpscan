@@ -1,6 +1,12 @@
 # 🧨 bumpscan
 
+[![npm](https://img.shields.io/npm/v/bumpscan?color=red)](https://www.npmjs.com/package/bumpscan)
+[![CI](https://github.com/AHMADMALIK1376/bumpscan/actions/workflows/ci.yml/badge.svg)](https://github.com/AHMADMALIK1376/bumpscan/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/bumpscan)](./LICENSE)
+
 **See exactly which lines of your code an npm upgrade will break — before you upgrade.**
+
+No AI, no server, no account. One command.
 
 ```bash
 npx bumpscan            # check every dependency

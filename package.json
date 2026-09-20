@@ -1,6 +1,6 @@
 {
   "name": "bumpscan",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "See exactly which lines of your code an npm package upgrade will break, before you upgrade.",
   "type": "module",
   "bin": {
@@ -19,7 +19,8 @@
     "start": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "keywords": [
     "upgrade",
@@ -51,5 +52,13 @@
   },
   "overrides": {
     "esbuild": "^0.28.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AHMADMALIK1376/bumpscan.git"
+  },
+  "homepage": "https://github.com/AHMADMALIK1376/bumpscan#readme",
+  "bugs": {
+    "url": "https://github.com/AHMADMALIK1376/bumpscan/issues"
   }
 }
