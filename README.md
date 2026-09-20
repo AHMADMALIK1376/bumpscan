@@ -149,6 +149,21 @@ jobs:
 It reads the package from the pull request title (`bump axios from 0.27.2 to 1.20.0`),
 posts one comment and updates that same comment on later pushes.
 
+The comment looks like this (a real one, from this repo's own [#1](https://github.com/AHMADMALIK1376/bumpscan/pull/1)):
+
+> ### 🧨 bumpscan · `pacote` 21.5.1 → 22.0.0
+>
+> #### ❌ Breaks your code (1)
+>
+> | What | Change | Where |
+> | --- | --- | --- |
+> | whole project | now needs Node 22.22.2 or newer (was 20.17.0) — check that your CI and servers run Node 22 or newer | — |
+>
+> <sub>0 other changes don't touch your code · 27 files scanned</sub>
+
+On a pull request the checked-out `package.json` already holds the new version, so the
+old one is read from the title. `--from` sets it by hand.
+
 ## Roadmap
 
 - [x] Find the current version and download both versions
