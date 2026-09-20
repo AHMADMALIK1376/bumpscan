@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { markdownReport, titleToTarget } from "../src/core/markdown.js";
+import { markdownReport, titleToTarget, titleToUpgrade } from "../src/core/markdown.js";
 import type { ScanResult } from "../src/index.js";
+
+describe("titleToUpgrade", () => {
+  it("also reports the version being replaced", () => {
+    expect(titleToUpgrade("chore(deps): bump axios from 0.27.2 to 1.20.0")).toEqual({
+      target: "axios@1.20.0",
+      from: "0.27.2",
+    });
+  });
+
+  it("handles a v prefix on both versions", () => {
+    expect(titleToUpgrade("Bump express from v4.18.0 to v5.2.1")).toEqual({
+      target: "express@5.2.1",
+      from: "4.18.0",
+    });
+  });
+
+  it("has no old version when the title does not name one", () => {
+    expect(titleToUpgrade("Update dependency express to v5.2.1")).toEqual({ target: "express@5.2.1" });
+  });
+});
 
 describe("titleToTarget", () => {
   it("reads a Dependabot title", () => {

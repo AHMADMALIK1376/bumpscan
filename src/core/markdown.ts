@@ -9,12 +9,27 @@ export const MARKER = "<!-- bumpscan -->";
  * "chore(deps): bump axios from 0.27.2 to 1.20.0" → `axios@1.20.0`.
  */
 export function titleToTarget(title: string): string | undefined {
-  const bump = /(?:bump|update|upgrade)\s+(\S+)\s+from\s+\S+\s+to\s+v?(\S+)/i.exec(title);
-  if (bump) return `${bump[1]}@${bump[2]}`;
+  return titleToUpgrade(title)?.target;
+}
+
+export interface TitleUpgrade {
+  /** `axios@1.20.0`, ready to pass to the scanner. */
+  target: string;
+  /**
+   * The version being replaced, when the title names it. On an upgrade pull request the
+   * checked-out package.json already holds the new version, so without this the scan would
+   * compare a version against itself.
+   */
+  from?: string;
+}
+
+export function titleToUpgrade(title: string): TitleUpgrade | undefined {
+  const bump = /(?:bump|update|upgrade)\s+(\S+)\s+from\s+v?(\S+)\s+to\s+v?(\S+)/i.exec(title);
+  if (bump) return { target: `${bump[1]}@${bump[3]}`, from: bump[2] };
 
   // Renovate style: "Update dependency axios to v1.20.0"
   const renovate = /update\s+dependency\s+(\S+)\s+to\s+v?(\S+)/i.exec(title);
-  return renovate ? `${renovate[1]}@${renovate[2]}` : undefined;
+  return renovate ? { target: `${renovate[1]}@${renovate[2]}` } : undefined;
 }
 
 /** At most five places, written relative to the project. */

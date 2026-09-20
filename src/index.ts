@@ -65,9 +65,21 @@ export interface UpgradeVersions {
   toVersion: string;
 }
 
-/** Works out which two versions to compare, without downloading anything. */
-export async function resolveUpgrade(input: string, cwd: string): Promise<UpgradeVersions> {
+/**
+ * Works out which two versions to compare, without downloading anything.
+ * `from` overrides the version found in the project, for a pull request that already
+ * contains the upgrade.
+ */
+export async function resolveUpgrade(input: string, cwd: string, from?: string): Promise<UpgradeVersions> {
   const target = parseTarget(input);
+
+  if (from) {
+    const [fromVersion, toVersion] = await Promise.all([
+      resolveVersion(target.name, from),
+      resolveVersion(target.name, target.range),
+    ]);
+    return { name: target.name, fromVersion, toVersion };
+  }
 
   const current = await findCurrentVersion(cwd, target.name);
   if (!current) {
@@ -85,8 +97,8 @@ export async function resolveUpgrade(input: string, cwd: string): Promise<Upgrad
 }
 
 /** Step 1: work out the old and new versions and download both. */
-export async function prepareUpgrade(input: string, cwd: string): Promise<UpgradePlan> {
-  const { name, fromVersion, toVersion } = await resolveUpgrade(input, cwd);
+export async function prepareUpgrade(input: string, cwd: string, replacing?: string): Promise<UpgradePlan> {
+  const { name, fromVersion, toVersion } = await resolveUpgrade(input, cwd, replacing);
 
   const [from, to] = await Promise.all([fetchPackage(name, fromVersion), fetchPackage(name, toVersion)]);
 
