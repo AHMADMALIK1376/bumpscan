@@ -49,6 +49,22 @@ The last line is the point: **172 changes, 6 that matter to you.**
 | Switch to ESM-only | `require("chalk")` stops working |
 | Higher minimum Node version | now needs Node 18+ |
 
+Packages without their own types are read from `@types/*`, so express, lodash and
+friends work too:
+
+```
+🧨 express  4.22.3 → 5.2.1
+   types from @types/express@4.17.25 → @types/express@5.0.6
+
+Breaks your code (3)
+  ❌ your whole project  now needs Node 18.0.0 or newer (was 0.10.0)
+  ❌ Request.param  method was removed
+       src/server.ts:6:14  const id = req.param("id");
+  ❌ Response.sendfile  method was removed
+       💡 fix: maybe use sendFile
+       src/server.ts:7:3  res.sendfile(`/data/${id}.json`);
+```
+
 ## How it works
 
 1. Finds the version you use now (from `node_modules` or `package.json`).
@@ -65,8 +81,9 @@ No AI, no server, no account. Everything runs on your machine.
 - [x] Compare the public API of the two versions
 - [x] Compare package.json (ESM-only, Node version)
 - [x] Find affected lines in your code, through imports, `require`, chains and local variables
-- [ ] Read types from `@types/*` for packages that don't ship their own
-- [ ] Suggest the fix for each break
+- [x] Read types from `@types/*` for packages that don't ship their own
+- [x] Suggest the fix for each break
+- [ ] Scan every dependency at once
 - [ ] Colored report with fixes
 - [ ] GitHub Action that comments on Dependabot / Renovate PRs
 

@@ -22,6 +22,42 @@ function scan(code: string, packageName = "demo") {
   return findUsages([file], packageName, API);
 }
 
+/** An express-shaped package: one callable export, and handlers passed as callbacks. */
+const CALLABLE_API = snapshotSource(`
+  declare function e(): e.App;
+  declare namespace e {
+    interface Req { param(name: string): string }
+    interface Res { sendfile(path: string): void }
+    interface Handler { (req: Req, res: Res): void }
+    interface App { get(path: string, ...handlers: Handler[]): void }
+  }
+  export = e;
+`);
+
+function scanCallable(code: string) {
+  const project = new Project({ useInMemoryFileSystem: true, compilerOptions: { allowJs: true } });
+  return findUsages([project.createSourceFile("/src/server.ts", code)], "demo", CALLABLE_API);
+}
+
+describe("packages with one callable export", () => {
+  it("follows the module call to what it returns", () => {
+    const usages = scanCallable(`import e from "demo";\nconst app = e();\napp.get("/x", () => {});`);
+    expect(usages.map((u) => u.path)).toContain("App.get");
+  });
+
+  it("types the parameters of a callback passed to the package", () => {
+    const usages = scanCallable(
+      `import e from "demo";\nconst app = e();\napp.get("/x", (req, res) => {\n  req.param("id");\n  res.sendfile("/a");\n});`,
+    );
+    expect(usages.map((u) => u.path)).toEqual(expect.arrayContaining(["Req.param", "Res.sendfile"]));
+  });
+
+  it("keeps callback parameters out of the surrounding scope", () => {
+    const usages = scanCallable(`import e from "demo";\nconst app = e();\napp.get("/x", (req) => {});\nreq.param("id");`);
+    expect(usages.map((u) => u.path)).not.toContain("Req.param");
+  });
+});
+
 describe("findUsages", () => {
   it("follows a default import to the type that describes it", () => {
     const usages = scan(`import client from "demo";\nclient.get("/users");`);

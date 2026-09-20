@@ -25,6 +25,7 @@ function printHit(hit: Hit, cwd: string, icon: string, color: (s: string) => str
     console.log(pc.dim(`       before: ${short(change.before)}`));
     console.log(pc.dim(`       after:  ${short(change.after)}`));
   }
+  if (change.fix) console.log(`       ${pc.green("💡 fix:")} ${short(change.fix, 80)}`);
   for (const usage of usages) {
     const where = `${path.relative(cwd, usage.file).replaceAll("\\", "/")}:${usage.line}:${usage.column}`;
     console.log(`       ${pc.cyan(where)}  ${pc.dim(short(usage.code, 60))}`);
@@ -55,7 +56,11 @@ program
         return;
       }
 
-      console.log(pc.bold(`\n🧨 ${result.to.name}  ${pc.dim(result.from.version)} → ${pc.cyan(result.to.version)}\n`));
+      console.log(pc.bold(`\n🧨 ${result.to.name}  ${pc.dim(result.from.version)} → ${pc.cyan(result.to.version)}`));
+      if (result.to.typesPackage) {
+        console.log(pc.dim(`   types from ${result.from.typesPackage ?? "?"} → ${result.to.typesPackage}`));
+      }
+      console.log();
 
       if (result.from.version === result.to.version) {
         console.log(pc.green("✅ You are already on this version. Nothing to check.\n"));

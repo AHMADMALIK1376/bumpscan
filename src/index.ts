@@ -2,7 +2,13 @@ import path from "node:path";
 import { snapshotApi } from "./core/api-snapshot.js";
 import { compareApi, type ApiChange } from "./core/compare-api.js";
 import { findCurrentVersion } from "./core/current-version.js";
-import { fetchPackage, resolveVersion, type FetchedPackage } from "./core/fetch-package.js";
+import {
+  fetchDependencies,
+  fetchPackage,
+  fetchTypesPackage,
+  resolveVersion,
+  type FetchedPackage,
+} from "./core/fetch-package.js";
 import { locateTypes } from "./core/locate-types.js";
 import { comparePackages } from "./core/package-changes.js";
 import { parseTarget } from "./core/parse-target.js";
@@ -10,7 +16,7 @@ import { findUsages, loadSourceFiles, type Usage } from "./core/scan-code.js";
 
 export { parseTarget } from "./core/parse-target.js";
 export { findCurrentVersion } from "./core/current-version.js";
-export { fetchPackage, resolveVersion } from "./core/fetch-package.js";
+export { fetchPackage, fetchTypesPackage, resolveVersion, typesPackageName } from "./core/fetch-package.js";
 export { locateTypes } from "./core/locate-types.js";
 export { snapshotApi, snapshotSource, type ApiSnapshot, type ApiEntry } from "./core/api-snapshot.js";
 export { compareApi, formatSignature, type ApiChange, type Severity } from "./core/compare-api.js";
@@ -18,8 +24,10 @@ export { comparePackageJson, allowsRequire } from "./core/package-changes.js";
 export { findUsages, loadSourceFiles, type Usage } from "./core/scan-code.js";
 
 export interface PackageSide extends FetchedPackage {
-  /** Main `.d.ts` file, if the package ships types. */
+  /** Main `.d.ts` file, if types were found. */
   types: string | undefined;
+  /** Set when the types came from a separate `@types/…` package. */
+  typesPackage?: string;
 }
 
 export interface UpgradePlan {
@@ -69,8 +77,27 @@ export async function prepareUpgrade(input: string, cwd: string): Promise<Upgrad
     fetchPackage(target.name, toVersion),
   ]);
 
-  const [fromTypes, toTypes] = await Promise.all([locateTypes(from.dir), locateTypes(to.dir)]);
-  return { from: { ...from, types: fromTypes }, to: { ...to, types: toTypes } };
+  const [fromSide, toSide] = await Promise.all([withTypes(from), withTypes(to)]);
+  return { from: fromSide, to: toSide };
+}
+
+/** Finds a package's types, falling back to its `@types/…` package. */
+async function withTypes(pkg: FetchedPackage): Promise<PackageSide> {
+  const own = await locateTypes(pkg.dir);
+  if (own) {
+    await fetchDependencies(pkg);
+    return { ...pkg, types: own };
+  }
+
+  const types = await fetchTypesPackage(pkg.name, pkg.version);
+  if (!types) return { ...pkg, types: undefined };
+  await fetchDependencies(types);
+
+  return {
+    ...pkg,
+    types: await locateTypes(types.dir),
+    typesPackage: `${types.name}@${types.version}`,
+  };
 }
 
 /** Step 2: compare package.json and the public API of the two versions. */

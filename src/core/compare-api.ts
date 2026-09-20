@@ -1,5 +1,6 @@
 import type { ApiEntry, ApiSnapshot, Signature } from "./api-snapshot.js";
 
+
 /** breaking: code that used this will stop compiling. maybe: it might. safe: nothing to do. */
 export type Severity = "breaking" | "maybe" | "safe";
 
@@ -10,6 +11,8 @@ export interface ApiChange {
   message: string;
   before?: string;
   after?: string;
+  /** What to do about it, when we can work it out. */
+  fix?: string;
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { breaking: 0, maybe: 1, safe: 2 };
@@ -44,6 +47,38 @@ function fingerprint(entry: ApiEntry, snapshot: ApiSnapshot): string {
     .join(",");
   const signatures = entry.signatures?.map((s) => formatSignature(s, false)).join("|") ?? "";
   return [entry.kind, entry.type ?? "", entry.optional ? "?" : "", signatures, children].join("#");
+}
+
+/** How many single-character edits turn `a` into `b`. Used to spot near-miss names. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      row[j] = Math.min(previous[j]! + 1, row[j - 1]! + 1, previous[j - 1]! + cost);
+    }
+    previous = row;
+  }
+  return previous[b.length]!;
+}
+
+/** For something that disappeared: did it move, or is there a close new name? */
+function suggestForRemoved(entry: ApiEntry, after: ApiSnapshot): string | undefined {
+  const sameName = [...after.values()].filter((e) => e.name === entry.name && e.path !== entry.path);
+  if (sameName.length === 1) return `moved to ${sameName[0]!.path}`;
+
+  const lower = entry.name.toLowerCase();
+  const siblings = [...after.values()].filter((e) => e.parent === entry.parent && e.kind === entry.kind);
+  const close = siblings
+    .map((e) => ({ name: e.name, distance: editDistance(lower, e.name.toLowerCase()) }))
+    .filter((e) => {
+      const other = e.name.toLowerCase();
+      return e.distance <= 2 || other.includes(lower) || lower.includes(other);
+    })
+    .sort((a, b) => a.distance - b.distance);
+
+  return close.length ? `maybe use ${close[0]!.name}` : undefined;
 }
 
 function argumentRange(sig: Signature): [min: number, max: number] {
@@ -85,18 +120,34 @@ function compareEntry(before: ApiEntry, after: ApiEntry, parentKind: string | un
       kind: "changed",
       severity: similar ? "maybe" : "breaking",
       message: `was ${article(before.kind)}, is now ${article(after.kind)}`,
+      fix: similar ? undefined : `${before.path} is used differently now: check the changelog`,
     };
   }
 
   if (before.optional && !after.optional && parentKind && SHAPE_KINDS.has(parentKind)) {
-    return { path, kind: "changed", severity: "breaking", message: "is now required" };
+    return {
+      path,
+      kind: "changed",
+      severity: "breaking",
+      message: "is now required",
+      fix: `always pass ${before.name}`,
+    };
   }
 
   if (before.signatures && after.signatures) {
     const arity = brokenArity(before.signatures, after.signatures);
     // A call signature is usually a callback type users *write*, not call, and a
     // function taking fewer arguments still fits. So only a risk there.
-    if (arity) return { path, kind: "changed", severity: before.name === "(call)" ? "maybe" : "breaking", message: arity };
+    if (arity) {
+      const shape = after.signatures.map((s) => formatSignature(s)).join(" | ");
+      return {
+        path,
+        kind: "changed",
+        severity: before.name === "(call)" ? "maybe" : "breaking",
+        message: arity,
+        fix: `call it as ${shape}`,
+      };
+    }
 
     const show = (sigs: Signature[]) => sigs.map((s) => formatSignature(s)).join(" | ");
     const bare = (sigs: Signature[]) => sigs.map((s) => formatSignature(s, false)).join(" | ");
@@ -113,7 +164,15 @@ function compareEntry(before: ApiEntry, after: ApiEntry, parentKind: string | un
   }
 
   if (before.type !== after.type) {
-    return { path, kind: "changed", severity: "maybe", message: "type changed", before: before.type, after: after.type };
+    return {
+      path,
+      kind: "changed",
+      severity: "maybe",
+      message: "type changed",
+      before: before.type,
+      after: after.type,
+      fix: `make sure your value still fits ${after.type}`,
+    };
   }
   return undefined;
 }
@@ -161,8 +220,20 @@ export function compareApi(before: ApiSnapshot, after: ApiSnapshot): ApiChange[]
     const target = renamedTo.get(entry);
     changes.push(
       target
-        ? { path: entry.path, kind: "renamed", severity: "breaking", message: `renamed to ${target.name}` }
-        : { path: entry.path, kind: "removed", severity: "breaking", message: `${entry.kind} was removed` },
+        ? {
+            path: entry.path,
+            kind: "renamed",
+            severity: "breaking",
+            message: `renamed to ${target.name}`,
+            fix: `rename ${entry.name} to ${target.name}`,
+          }
+        : {
+            path: entry.path,
+            kind: "removed",
+            severity: "breaking",
+            message: `${entry.kind} was removed`,
+            fix: suggestForRemoved(entry, after),
+          },
     );
   }
 

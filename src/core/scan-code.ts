@@ -1,5 +1,5 @@
 import { Node, Project, SyntaxKind, type SourceFile } from "ts-morph";
-import type { ApiSnapshot } from "./api-snapshot.js";
+import type { ApiSnapshot, Signature } from "./api-snapshot.js";
 
 /** One place in the user's code that touches something from the package. */
 export interface Usage {
@@ -34,10 +34,54 @@ export function loadSourceFiles(cwd: string): SourceFile[] {
   return project.getSourceFiles();
 }
 
-/** `AxiosStatic` from `AxiosStatic<T>`; undefined when the type is not a plain name. */
+/** `AxiosStatic` from `AxiosStatic<T>`, or `core.Express` from `core.Express<T>`. */
 function baseTypeName(type: string | undefined): string | undefined {
-  const match = /^([A-Za-z_$][\w$]*)/.exec(type?.trim() ?? "");
+  const match = /^([A-Za-z_$][\w$.]*)/.exec(type?.trim() ?? "");
   return match?.[1];
+}
+
+/**
+ * The snapshot path a written type refers to. Types are often written through an
+ * import alias (`core.Express`), while the snapshot knows them by name (`Express`).
+ */
+function typeRef(snapshot: ApiSnapshot, type: string | undefined): string | undefined {
+  // An intersection or union names several types; the first one we know is good enough.
+  for (const part of (type ?? "").split(/[&|]/)) {
+    const base = baseTypeName(part.replace(/^[\s(]+/, ""));
+    if (!base) continue;
+    if (snapshot.has(base)) return base;
+    const last = base.slice(base.lastIndexOf(".") + 1);
+    if (snapshot.has(last)) return last;
+  }
+  return undefined;
+}
+
+/** `RequestHandler` from `Array<RequestHandler>` or `RequestHandler[]`. */
+function elementType(type: string): string {
+  const generic = /^(?:Array|ReadonlyArray)<(.+)>$/.exec(type.trim());
+  if (generic) return generic[1]!;
+  return type.trim().replace(/\[\]$/, "");
+}
+
+/** The declared type of argument number `index`, following a trailing `...rest` parameter. */
+function paramTypeAt(signatures: Signature[], index: number): string | undefined {
+  for (const signature of signatures) {
+    const direct = signature.params[index];
+    if (direct && !direct.rest) return direct.type;
+
+    const last = signature.params.at(-1);
+    if (last?.rest && index >= signature.params.length - 1) return elementType(last.type);
+  }
+  return undefined;
+}
+
+/** Call signatures of a path, following a property whose type is callable. */
+function signaturesFor(snapshot: ApiSnapshot, path: string): Signature[] | undefined {
+  const entry = snapshot.get(path);
+  if (entry?.signatures?.length) return entry.signatures;
+
+  const referenced = typeRef(snapshot, entry?.type);
+  return referenced ? snapshot.get(`${referenced}.(call)`)?.signatures : undefined;
 }
 
 /**
@@ -48,8 +92,8 @@ function resolveAlias(snapshot: ApiSnapshot, path: string, depth = 0): string {
   if (depth > 5) return path;
   const entry = snapshot.get(path);
   if (!entry?.type) return path;
-  const base = baseTypeName(entry.type);
-  if (!base || base === path || !snapshot.has(base)) return path;
+  const base = typeRef(snapshot, entry.type);
+  if (!base || base === path) return path;
   return resolveAlias(snapshot, base, depth + 1);
 }
 
@@ -132,15 +176,14 @@ function usageAt(node: Node, path: string): Usage {
  */
 function optionUsages(snapshot: ApiSnapshot, call: Node, calleePath: string): Usage[] {
   if (!Node.isCallExpression(call)) return [];
-  const signatures = snapshot.get(calleePath)?.signatures;
+  const signatures = signaturesFor(snapshot, calleePath);
   if (!signatures) return [];
 
   const usages: Usage[] = [];
   call.getArguments().forEach((arg, index) => {
     if (!Node.isObjectLiteralExpression(arg)) return;
-    const paramType = signatures.map((s) => s.params[index]?.type).find(Boolean);
-    const optionType = baseTypeName(paramType);
-    if (!optionType || !snapshot.has(optionType)) return;
+    const optionType = typeRef(snapshot, paramTypeAt(signatures, index));
+    if (!optionType) return;
 
     for (const property of arg.getProperties()) {
       if (!Node.isPropertyAssignment(property) && !Node.isShorthandPropertyAssignment(property)) continue;
@@ -157,8 +200,7 @@ interface Match {
   node: Node;
 }
 
-function matchChain(snapshot: ApiSnapshot, byLocal: Map<string, Binding>, identifier: Node): Match | undefined {
-  const binding = byLocal.get(identifier.getText());
+function matchChain(snapshot: ApiSnapshot, binding: Binding | undefined, identifier: Node): Match | undefined {
   if (!binding) return undefined;
 
   const segments: string[] = [];
@@ -172,8 +214,10 @@ function matchChain(snapshot: ApiSnapshot, byLocal: Map<string, Binding>, identi
     chain = above;
   }
 
-  // `const x = require("pkg")` could be the module itself or its default export, so try both.
-  const roots = binding.namespace ? ["", "default"] : [binding.root];
+  // A default import or `require()` may be the module's own callable export (`export = e`),
+  // its default export, or the module namespace, so try each.
+  const roots =
+    binding.namespace || binding.root === "default" ? [binding.root, "", "default", "(module)"] : [binding.root];
   const matched = roots
     .map((root) => walkMembers(snapshot, root, segments))
     .reduce((best, current) => (current.length > best.length ? current : best));
@@ -182,9 +226,9 @@ function matchChain(snapshot: ApiSnapshot, byLocal: Map<string, Binding>, identi
     const last = matched.length - 1;
     return { path: matched[last]!, node: nodes[last]! };
   }
-  if (!binding.namespace && !segments.length && snapshot.has(binding.root)) {
-    return { path: binding.root, node: identifier };
-  }
+  // No members were used: the import itself points at something, e.g. `express()`.
+  const direct = roots.find((root) => root && snapshot.has(root));
+  if (direct && !segments.length) return { path: direct, node: identifier };
   return undefined;
 }
 
@@ -193,9 +237,8 @@ function resultOf(snapshot: ApiSnapshot, path: string, isNew: boolean): string |
   const entry = snapshot.get(path);
   if (!entry) return undefined;
   if (isNew) return entry.kind === "class" || entry.kind === "interface" ? path : undefined;
-  const returns = entry.signatures?.map((s) => s.returns).find(Boolean);
-  const base = baseTypeName(returns);
-  return base && snapshot.has(base) ? base : undefined;
+  const returns = signaturesFor(snapshot, path)?.map((s) => s.returns).find(Boolean);
+  return typeRef(snapshot, returns);
 }
 
 /** The `a` in `a.b.c`. */
@@ -223,11 +266,62 @@ function addLocalBindings(file: SourceFile, byLocal: Map<string, Binding>, snaps
       const root = firstIdentifier(initializer.getExpression());
       if (!Node.isIdentifier(root)) continue;
 
-      const match = matchChain(snapshot, byLocal, root);
+      const match = matchChain(snapshot, byLocal.get(root.getText()), root);
       const result = match && resultOf(snapshot, match.path, isNew);
       if (result) byLocal.set(name.getText(), { local: name.getText(), root: result, namespace: false });
     }
   }
+}
+
+/**
+ * Binds the parameters of a callback passed to the package, e.g. the `req` and `res` in
+ * `app.get("/x", (req, res) => …)`. Their types come from the function's own signature.
+ */
+function bindCallbackParams(
+  snapshot: ApiSnapshot,
+  call: Node,
+  calleePath: string,
+  scopes: Map<number, Map<string, Binding>>,
+) {
+  if (!Node.isCallExpression(call) && !Node.isNewExpression(call)) return;
+  const signatures = signaturesFor(snapshot, calleePath);
+  if (!signatures) return;
+
+  (call.getArguments() ?? []).forEach((arg, index) => {
+    if (!Node.isArrowFunction(arg) && !Node.isFunctionExpression(arg)) return;
+
+    // The declared type of this argument, e.g. `RequestHandler`.
+    const handlerType = typeRef(snapshot, paramTypeAt(signatures, index));
+    // What that type's own call signature receives, e.g. `(req: Request, res: Response)`.
+    const handler = handlerType ? snapshot.get(`${handlerType}.(call)`) : undefined;
+    const params = handler?.signatures?.[0]?.params;
+    if (!params) return;
+
+    const scope = new Map<string, Binding>();
+    arg.getParameters().forEach((param, position) => {
+      const type = typeRef(snapshot, params[position]?.type);
+      const name = param.getNameNode();
+      if (type && Node.isIdentifier(name)) {
+        scope.set(name.getText(), { local: name.getText(), root: type, namespace: false });
+      }
+    });
+    if (scope.size) scopes.set(arg.getStart(), scope);
+  });
+}
+
+/** Bindings visible at a node: the innermost callback scope first, then the file's imports. */
+function lookupBinding(
+  node: Node,
+  scopes: Map<number, Map<string, Binding>>,
+  byLocal: Map<string, Binding>,
+): Binding | undefined {
+  const name = node.getText();
+  for (let current = node.getParent(); current; current = current.getParent()) {
+    const scope = scopes.get(current.getStart());
+    const binding = scope?.get(name);
+    if (binding) return binding;
+  }
+  return byLocal.get(name);
 }
 
 /** Finds every place the project uses something from the package. */
@@ -240,8 +334,10 @@ export function findUsages(files: SourceFile[], packageName: string, snapshot: A
     const byLocal = new Map(bindings.map((b) => [b.local, b]));
     addLocalBindings(file, byLocal, snapshot);
 
+    const scopes = new Map<number, Map<string, Binding>>();
     for (const identifier of file.getDescendantsOfKind(SyntaxKind.Identifier)) {
-      if (!byLocal.has(identifier.getText())) continue;
+      const binding = lookupBinding(identifier, scopes, byLocal);
+      if (!binding) continue;
       // Skip the import statement itself; it is reported from the binding list below.
       if (identifier.getFirstAncestorByKind(SyntaxKind.ImportDeclaration)) continue;
       // Only the start of a chain: in `a.b`, `b` is handled while walking from `a`.
@@ -250,7 +346,7 @@ export function findUsages(files: SourceFile[], packageName: string, snapshot: A
       // The `x` in `const x = ...` is the variable being defined, not a use of the package.
       if (Node.isVariableDeclaration(parent) && parent.getNameNode() === identifier) continue;
 
-      const match = matchChain(snapshot, byLocal, identifier);
+      const match = matchChain(snapshot, binding, identifier);
       if (!match) continue;
       usages.push(usageAt(match.node, match.path));
 
@@ -260,7 +356,9 @@ export function findUsages(files: SourceFile[], packageName: string, snapshot: A
         // `new Thing(a, b)` uses the constructor, which may have changed.
         const constructorPath = `${match.path}.constructor`;
         if (isNew && snapshot.has(constructorPath)) usages.push(usageAt(match.node, constructorPath));
-        usages.push(...optionUsages(snapshot, outer, isNew ? constructorPath : match.path));
+        const signaturePath = isNew ? constructorPath : match.path;
+        usages.push(...optionUsages(snapshot, outer, signaturePath));
+        bindCallbackParams(snapshot, outer, signaturePath, scopes);
       }
     }
 

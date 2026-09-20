@@ -23,6 +23,36 @@ describe("snapshotSource", () => {
   });
 });
 
+describe("fix suggestions", () => {
+  it("suggests the new name for a rename", () => {
+    const changes = diff(`export interface C { timeout?: number }`, `export interface C { timeoutMs?: number }`);
+    expect(find(changes, "C.timeout")?.fix).toBe("rename timeout to timeoutMs");
+  });
+
+  it("says where something moved to", () => {
+    const changes = diff(
+      `export interface A { send(): void }
+       export interface B {}`,
+      `export interface A {}
+       export interface B { send(): void }`,
+    );
+    expect(find(changes, "A.send")?.fix).toBe("moved to B.send");
+  });
+
+  it("points at a close new name", () => {
+    const changes = diff(`export interface C { onFail?: string }`, `export interface C { onFailed?: string }`);
+    expect(find(changes, "C.onFail")?.fix).toContain("onFailed");
+  });
+
+  it("shows the new call shape when arguments changed", () => {
+    const changes = diff(
+      `export declare function get(url: string): void;`,
+      `export declare function get(url: string, options: object): void;`,
+    );
+    expect(find(changes, "get")?.fix).toBe("call it as (url: string, options: object) => void");
+  });
+});
+
 describe("compareApi", () => {
   it("reports removed exports once, not once per member", () => {
     const changes = diff(`export interface Old { a: string; b: string }`, ``);

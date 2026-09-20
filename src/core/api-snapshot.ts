@@ -1,4 +1,4 @@
-import { Node, Project, type ParameterDeclaration, type TypeNode } from "ts-morph";
+import { Node, Project, type ParameterDeclaration, type SourceFile, type TypeNode } from "ts-morph";
 
 /**
  * A flat list of everything a package makes public, keyed by path:
@@ -52,6 +52,11 @@ function typeText(node: TypeNode | Node | undefined): string {
     .replace(/\s*[;,]\s*}/g, " }")
     .replace(/;\s*/g, ", ")
     .trim();
+}
+
+/** TypeScript's own built-in type files, e.g. `lib.es2022.d.ts`. */
+function isDefaultLib(file: { getBaseName(): string }): boolean {
+  return /^lib\..*\.d\.ts$/.test(file.getBaseName());
 }
 
 type SignatureLike = Node & {
@@ -163,9 +168,10 @@ class Collector {
       if (visited.has(baseDecl)) continue;
       visited.add(baseDecl);
       if (!Node.isInterfaceDeclaration(baseDecl) && !Node.isClassDeclaration(baseDecl)) continue;
-      // Built-in types (Promise, Array, Error…) live in TypeScript's own lib files. Their
-      // members are not the package's API, and reporting them only adds noise.
-      if (baseDecl.getSourceFile().isInNodeModules()) continue;
+      // Built-in types (Promise, Array, Error…) live in TypeScript's own `lib.*.d.ts` files.
+      // Their members are not the package's API, and reporting them only adds noise.
+      // Other packages are kept: `@types/express` holds most of its API in a dependency.
+      if (isDefaultLib(baseDecl.getSourceFile())) continue;
 
       const own = new Collector();
       own.members(baseDecl.getMembers(), path);
@@ -225,7 +231,23 @@ export function snapshotApi(typesFile: string): ApiSnapshot {
 
   const collector = new Collector();
   collector.exports(source.getExportedDeclarations());
+  collectExportEquals(collector, source);
   return collector.entries;
+}
+
+/**
+ * Older packages export one callable value with `export = e`. That value is what
+ * `import express from "express"` gives you, so it is recorded as `(module)`.
+ */
+function collectExportEquals(collector: Collector, source: SourceFile) {
+  for (const assignment of source.getExportAssignments()) {
+    if (!assignment.isExportEquals()) continue;
+    const expression = assignment.getExpression();
+    if (!Node.isIdentifier(expression)) continue;
+    for (const declaration of expression.getSymbol()?.getDeclarations() ?? []) {
+      collector.declaration(declaration, "(module)");
+    }
+  }
 }
 
 /** Same as {@link snapshotApi}, from source text. Handy for tests. */
@@ -233,5 +255,6 @@ export function snapshotSource(code: string): ApiSnapshot {
   const source = newProject(true).createSourceFile("/index.d.ts", code);
   const collector = new Collector();
   collector.exports(source.getExportedDeclarations());
+  collectExportEquals(collector, source);
   return collector.entries;
 }

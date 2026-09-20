@@ -42,7 +42,8 @@ export function comparePackageJson(before: PackageJson, after: PackageJson): Api
       path: "(package)",
       kind: "changed",
       severity: "breaking",
-      message: "is now ESM-only: require() stops working. Use import, or Node 22+ which can require() ESM",
+      message: "is now ESM-only: require() stops working",
+      fix: 'switch to `import x from "pkg"`, or run Node 22+, which can require() ESM',
     });
   }
 
@@ -58,6 +59,7 @@ export function comparePackageJson(before: PackageJson, after: PackageJson): Api
       kind: "changed",
       severity: "breaking",
       message: `now needs Node ${newNode.version} or newer${oldNode ? ` (was ${oldNode.version})` : ""}`,
+      fix: `check that your CI and servers run Node ${newNode.major} or newer`,
     });
   }
 
