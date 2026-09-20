@@ -1,8 +1,10 @@
 #!/usr/bin/env node
+import { appendFile } from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
 import ora from "ora";
 import pc from "picocolors";
+import { markdownReport, titleToTarget } from "./core/markdown.js";
 import {
   compareUpgrade,
   listDependencies,
@@ -10,7 +12,14 @@ import {
   scanAllDependencies,
   scanProject,
   type Hit,
+  type ScanResult,
 } from "./index.js";
+
+/** Tells the Action there was nothing to check. */
+async function writeEmptyGithubOutput() {
+  const file = process.env.GITHUB_OUTPUT;
+  if (file) await appendFile(file, "breaking=0\nrisky=0\nmarkdown=\n");
+}
 
 /** How many hits of each group to show before folding the rest (unless --all). */
 const BREAKING_LIMIT = 25;
@@ -45,6 +54,30 @@ interface CliOptions {
   json?: boolean;
   ci?: boolean;
   dev?: boolean;
+  markdown?: boolean;
+  githubOutput?: boolean;
+  prTitle?: string;
+}
+
+/** Writes the values the GitHub Action reads, when running inside one. */
+async function writeGithubOutput(result: ScanResult, cwd: string) {
+  const file = process.env.GITHUB_OUTPUT;
+  const values = {
+    breaking: String(result.hits.filter((h) => h.change.severity === "breaking").length),
+    risky: String(result.hits.filter((h) => h.change.severity === "maybe").length),
+    markdown: markdownReport(result, cwd),
+  };
+
+  if (!file) {
+    console.log(`breaking=${values.breaking}\nrisky=${values.risky}`);
+    return;
+  }
+  // Multi-line values need a delimiter block.
+  const lines = Object.entries(values).map(([key, value]) => {
+    const delimiter = `bumpscan_${Math.random().toString(36).slice(2)}`;
+    return `${key}<<${delimiter}\n${value}\n${delimiter}`;
+  });
+  await appendFile(file, `${lines.join("\n")}\n`);
 }
 
 /** `bumpscan` with no package: check every dependency against its latest version. */
@@ -122,7 +155,19 @@ program
   .option("--json", "print the result as JSON")
   .option("--ci", "exit with code 1 when your code hits a breaking change")
   .option("--no-dev", "skip devDependencies when checking the whole project")
+  .option("--markdown", "print the report as markdown, for a pull request comment")
+  .option("--github-output", "write breaking/risky/markdown to $GITHUB_OUTPUT")
+  .option("--pr-title <title>", "take the package from a pull request title when none is given")
   .action(async (input: string | undefined, options: CliOptions) => {
+    // Bots title their pull requests "bump axios from 1.2.3 to 2.0.0".
+    input ||= options.prTitle ? titleToTarget(options.prTitle) : undefined;
+
+    if (!input && (options.markdown || options.githubOutput)) {
+      console.log("bumpscan: no package given and the pull request title does not name one, skipping.");
+      if (options.githubOutput) await writeEmptyGithubOutput();
+      return;
+    }
+
     if (!input) {
       await scanEverything(options);
       return;
@@ -136,8 +181,14 @@ program
       const result = scanProject(report, options.cwd);
       spinner?.stop();
 
+      if (options.githubOutput) await writeGithubOutput(result, options.cwd);
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (options.markdown) {
+        console.log(markdownReport(result, options.cwd));
+        if (options.ci && result.hits.some((h) => h.change.severity === "breaking")) process.exitCode = 1;
         return;
       }
 

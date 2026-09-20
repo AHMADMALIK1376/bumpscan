@@ -87,6 +87,32 @@ Breaks your code (3)
 
 No AI, no server, no account. Everything runs on your machine.
 
+## GitHub Action
+
+Comment on every Dependabot or Renovate pull request with the lines of your code
+that break. Create `.github/workflows/bumpscan.yml`:
+
+```yaml
+name: bumpscan
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: AHMADMALIK1376/bumpscan@main
+        # with:
+        #   fail-on-breaking: "true"   # block the merge instead of just commenting
+```
+
+It reads the package from the pull request title (`bump axios from 0.27.2 to 1.20.0`),
+posts one comment and updates that same comment on later pushes.
+
 ## Roadmap
 
 - [x] Find the current version and download both versions
@@ -97,7 +123,9 @@ No AI, no server, no account. Everything runs on your machine.
 - [x] Suggest the fix for each break
 - [x] Scan every dependency at once
 - [ ] Colored report with fixes
-- [ ] GitHub Action that comments on Dependabot / Renovate PRs
+- [x] GitHub Action that comments on Dependabot / Renovate PRs
+- [ ] Monorepo support
+- [ ] `--fix` that edits your code for you
 
 ## Develop
 

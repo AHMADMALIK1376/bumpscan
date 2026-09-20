@@ -1,0 +1,82 @@
+name: bumpscan
+description: Comment on dependency-upgrade pull requests with the lines of your code that break.
+author: Muhammad Ahmad Malik
+branding:
+  icon: alert-triangle
+  color: red
+
+inputs:
+  package:
+    description: "Package and version to check, e.g. axios@2. Left empty, it is read from the pull request title."
+    required: false
+    default: ""
+  working-directory:
+    description: Folder holding the package.json to scan.
+    required: false
+    default: "."
+  comment:
+    description: Post the result as a pull request comment.
+    required: false
+    default: "true"
+  fail-on-breaking:
+    description: Fail the job when your code hits a breaking change.
+    required: false
+    default: "false"
+  token:
+    description: Token used to post the comment.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  breaking:
+    description: Number of breaking changes your code uses.
+    value: ${{ steps.scan.outputs.breaking }}
+  risky:
+    description: Number of risky changes your code uses.
+    value: ${{ steps.scan.outputs.risky }}
+  markdown:
+    description: The report as markdown.
+    value: ${{ steps.scan.outputs.markdown }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: >
+        npx --yes bumpscan@latest ${{ inputs.package }}
+        --markdown --github-output
+        --pr-title "${{ github.event.pull_request.title }}"
+
+    - if: steps.scan.outputs.markdown != '' && inputs.comment == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      env:
+        BODY: ${{ steps.scan.outputs.markdown }}
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const body = process.env.BODY;
+          const marker = "<!-- bumpscan -->";
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+
+          // Update our own comment instead of adding a new one on every push.
+          const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+          const mine = comments.data.find((c) => c.body?.includes(marker));
+
+          if (mine) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
+
+    - if: inputs.fail-on-breaking == 'true' && steps.scan.outputs.breaking != '0'
+      shell: bash
+      run: |
+        echo "::error::bumpscan found ${{ steps.scan.outputs.breaking }} breaking change(s) that your code uses"
+        exit 1
