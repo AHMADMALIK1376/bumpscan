@@ -5,7 +5,7 @@ import { Command } from "commander";
 import ora from "ora";
 import pc from "picocolors";
 import { applyFixes } from "./core/apply-fixes.js";
-import { markdownReport, titleToTarget } from "./core/markdown.js";
+import { markdownReport, titleToUpgrade } from "./core/markdown.js";
 import {
   compareUpgrade,
   listDependencies,
@@ -27,6 +27,9 @@ const BREAKING_LIMIT = 25;
 const MAYBE_LIMIT = 15;
 
 const program = new Command();
+
+/** Kept in step with package.json by the release commit. */
+const VERSION = "0.1.1";
 
 function short(text: string | undefined, max = 70) {
   if (!text) return "";
@@ -59,6 +62,7 @@ interface CliOptions {
   fix?: boolean;
   githubOutput?: boolean;
   prTitle?: string;
+  from?: string;
 }
 
 /** Writes the values the GitHub Action reads, when running inside one. */
@@ -175,7 +179,7 @@ async function scanEverything(options: CliOptions) {
 program
   .name("bumpscan")
   .description("See which lines of your code an npm package upgrade will break, before you upgrade.")
-  .version("0.0.1")
+  .version(VERSION)
   .argument("[package]", "package and version to upgrade to, e.g. axios@2. Leave empty to check every dependency")
   .option("-C, --cwd <dir>", "project folder to scan", process.cwd())
   .option("--all", "list every change, including ones your code never touches")
@@ -185,10 +189,15 @@ program
   .option("--markdown", "print the report as markdown, for a pull request comment")
   .option("--github-output", "write breaking/risky/markdown to $GITHUB_OUTPUT")
   .option("--pr-title <title>", "take the package from a pull request title when none is given")
+  .option("--from <version>", "compare against this version instead of the one in package.json")
   .option("--fix", "rewrite the renames in your code (edits files in place)")
   .action(async (input: string | undefined, options: CliOptions) => {
-    // Bots title their pull requests "bump axios from 1.2.3 to 2.0.0".
-    input ||= options.prTitle ? titleToTarget(options.prTitle) : undefined;
+    // Bots title their pull requests "bump axios from 1.2.3 to 2.0.0". On such a pull
+    // request package.json already holds the new version, so the title also tells us
+    // which version is being replaced.
+    const fromTitle = options.prTitle ? titleToUpgrade(options.prTitle) : undefined;
+    input ||= fromTitle?.target;
+    const fromVersion = options.from ?? (fromTitle?.target === input ? fromTitle?.from : undefined);
 
     if (!input && (options.markdown || options.githubOutput)) {
       console.log("bumpscan: no package given and the pull request title does not name one, skipping.");
@@ -202,7 +211,7 @@ program
     }
     const spinner = options.json ? undefined : ora("Downloading both versions…").start();
     try {
-      const plan = await prepareUpgrade(input, options.cwd);
+      const plan = await prepareUpgrade(input, options.cwd, fromVersion);
       if (spinner) spinner.text = "Comparing their APIs…";
       const report = await compareUpgrade(plan);
       if (spinner) spinner.text = "Scanning your code…";
