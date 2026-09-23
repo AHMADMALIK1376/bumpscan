@@ -29,7 +29,7 @@ const MAYBE_LIMIT = 15;
 const program = new Command();
 
 /** Kept in step with package.json by the release commit. */
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 
 function short(text: string | undefined, max = 70) {
   if (!text) return "";

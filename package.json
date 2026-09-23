@@ -1,6 +1,6 @@
 {
   "name": "bumpscan",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "See exactly which lines of your code an npm package upgrade will break, before you upgrade.",
   "type": "module",
   "bin": {
