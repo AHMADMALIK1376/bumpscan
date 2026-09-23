@@ -174,7 +174,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     problems,
     output,
-    vscode.commands.registerCommand("bumpscan.checkOne", () => checkOne()),
+    // The optional target lets other extensions, tasks and tests pass `express@5` directly.
+    vscode.commands.registerCommand("bumpscan.checkOne", (target?: string) => checkOne(target)),
     vscode.commands.registerCommand("bumpscan.checkAll", () => checkAll()),
     vscode.commands.registerCommand("bumpscan.clear", () => problems.clear()),
   );

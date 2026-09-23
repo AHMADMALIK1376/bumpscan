@@ -56,6 +56,21 @@ If you'd rather use a copy you installed yourself (`npm i -g bumpscan`), set
 No AI, no account, no telemetry. The extension runs the CLI on your own machine; the
 only network use is npm, to download the two versions being compared.
 
+## Develop
+
+```bash
+npm install
+npm run build
+npm test          # the pure logic, no editor needed
+npm run package   # builds a .vsix
+```
+
+To drive the extension inside a real VS Code window and check the marks it draws:
+
+```bash
+code --extensionDevelopmentPath=. --extensionTestsPath=./test-vscode/suite.cjs ../../bumpscan-demo
+```
+
 ## Links
 
 - [Source and issues](https://github.com/AHMADMALIK1376/bumpscan)
