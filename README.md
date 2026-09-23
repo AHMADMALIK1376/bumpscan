@@ -141,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: AHMADMALIK1376/bumpscan@main
+      - uses: AHMADMALIK1376/bumpscan@v0.1.2
         # with:
         #   fail-on-breaking: "true"   # block the merge instead of just commenting
 ```

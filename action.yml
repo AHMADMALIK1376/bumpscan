@@ -1,5 +1,5 @@
-name: bumpscan
-description: Comment on dependency-upgrade pull requests with the lines of your code that break.
+name: Bumpscan - npm Upgrade Breaking Changes
+description: Comments on dependency pull requests with the exact lines of your code that the upgrade breaks.
 author: Muhammad Ahmad Malik
 branding:
   icon: alert-triangle
