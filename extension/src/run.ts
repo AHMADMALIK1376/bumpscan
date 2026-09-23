@@ -13,6 +13,19 @@ function command(runner: Runner): { file: string; prefix: string[] } {
   return { file: windows ? "npx.cmd" : "npx", prefix: ["--yes", "bumpscan@latest"] };
 }
 
+/**
+ * A package name and version range, and nothing else.
+ *
+ * Windows needs the shell to start a `.cmd`, and the shell does not escape arguments,
+ * so anything reaching the command line is checked first. The target can come from a
+ * package.json in a repository someone else wrote, which is not trusted input.
+ */
+const SAFE_TARGET = /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*@[\w.*^~><=+-]+$/i;
+
+export function isSafeTarget(target: string): boolean {
+  return SAFE_TARGET.test(target) && target.length <= 214;
+}
+
 /** Runs bumpscan and parses its JSON. Anything printed before the JSON is ignored. */
 async function json<T>(args: string[], cwd: string, runner: Runner): Promise<T> {
   const { file, prefix } = command(runner);
@@ -30,6 +43,9 @@ async function json<T>(args: string[], cwd: string, runner: Runner): Promise<T> 
 
 /** One upgrade, e.g. `express@5`. */
 export function scanOne(target: string, cwd: string, runner: Runner): Promise<ScanResult> {
+  if (!isSafeTarget(target)) {
+    return Promise.reject(new Error(`"${target}" is not a package name and version, e.g. express@5`));
+  }
   return json<ScanResult>([target], cwd, runner);
 }
 
