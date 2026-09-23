@@ -1,0 +1,95 @@
+{
+  "name": "bumpscan-vscode",
+  "displayName": "bumpscan",
+  "description": "See which lines of your code an npm upgrade will break, right in the editor.",
+  "version": "0.1.0",
+  "publisher": "AHMADMALIK1376",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AHMADMALIK1376/bumpscan.git",
+    "directory": "extension"
+  },
+  "homepage": "https://github.com/AHMADMALIK1376/bumpscan#readme",
+  "bugs": {
+    "url": "https://github.com/AHMADMALIK1376/bumpscan/issues"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "npm",
+    "upgrade",
+    "breaking changes",
+    "dependencies",
+    "semver"
+  ],
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCommand:bumpscan.checkOne",
+    "onCommand:bumpscan.checkAll"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "bumpscan.checkOne",
+        "title": "Check one dependency upgrade…",
+        "category": "bumpscan"
+      },
+      {
+        "command": "bumpscan.checkAll",
+        "title": "Check every dependency",
+        "category": "bumpscan"
+      },
+      {
+        "command": "bumpscan.clear",
+        "title": "Clear results",
+        "category": "bumpscan"
+      }
+    ],
+    "configuration": {
+      "title": "bumpscan",
+      "properties": {
+        "bumpscan.runner": {
+          "type": "string",
+          "default": "npx",
+          "enum": [
+            "npx",
+            "global"
+          ],
+          "enumDescriptions": [
+            "Run through npx, which fetches bumpscan when needed",
+            "Run the bumpscan already installed on your machine"
+          ],
+          "description": "How to run bumpscan."
+        },
+        "bumpscan.includeRisky": {
+          "type": "boolean",
+          "default": true,
+          "description": "Also mark changes that might break your code, not only the ones that will."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "package": "npm run build && vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/vscode": "^1.90.0",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
+  }
+}

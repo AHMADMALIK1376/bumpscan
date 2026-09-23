@@ -164,6 +164,16 @@ The comment looks like this (a real one, from this repo's own [#1](https://githu
 On a pull request the checked-out `package.json` already holds the new version, so the
 old one is read from the title. `--from` sets it by hand.
 
+## VS Code extension
+
+The same checks inside the editor: the lines an upgrade breaks are underlined in red,
+with the fix in the tooltip. See [`extension/`](./extension).
+
+```
+Ctrl+Shift+P → bumpscan: Check one dependency upgrade…
+Ctrl+Shift+P → bumpscan: Check every dependency
+```
+
 ## Roadmap
 
 - [x] Find the current version and download both versions
@@ -177,7 +187,7 @@ old one is read from the title. `--from` sets it by hand.
 - [x] GitHub Action that comments on Dependabot / Renovate PRs
 - [x] Monorepo support (npm, yarn and pnpm workspaces)
 - [x] `--fix` that renames things in your code for you
-- [ ] VS Code extension
+- [x] VS Code extension
 - [ ] Website
 
 ## Develop
