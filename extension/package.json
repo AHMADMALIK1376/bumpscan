@@ -3,7 +3,7 @@
   "displayName": "bumpscan",
   "description": "See which lines of your code an npm upgrade will break, right in the editor.",
   "version": "0.1.0",
-  "publisher": "AHMADMALIK1376",
+  "publisher": "AhmadMalik1376",
   "license": "MIT",
   "repository": {
     "type": "git",

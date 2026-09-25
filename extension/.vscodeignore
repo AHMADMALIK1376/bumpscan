@@ -5,3 +5,5 @@ tsconfig.json
 tsup.config.ts
 out/**/*.map
 .vscodeignore
+test-vscode/**
+*.vsix
